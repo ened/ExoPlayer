@@ -17,9 +17,21 @@ android {
     compileSdkVersion 23
     buildToolsVersion "24.0.1"
 
+    externalNativeBuild{
+        ndkBuild{
+            path "src/main/jni/Android.mk"
+        }
+    }
+
     defaultConfig {
         minSdkVersion 9
         targetSdkVersion 23
+
+        externalNativeBuild {
+            ndkBuild {
+                abiFilters "armeabi-v7a"
+            }
+        }
     }
 
     buildTypes {
@@ -31,11 +43,6 @@ android {
 
     lintOptions {
         abortOnError false
-    }
-
-    sourceSets.main {
-        jniLibs.srcDir 'src/main/libs'
-        jni.srcDirs = [] // Disable the automatic ndk-build call by Android Studio.
     }
 }
 

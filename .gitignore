@@ -41,6 +41,7 @@ proguard-project.txt
 .DS_Store
 dist
 tmp
+.externalNativeBuild
 
 # VP9 extension
 extensions/vp9/src/main/jni/libvpx
