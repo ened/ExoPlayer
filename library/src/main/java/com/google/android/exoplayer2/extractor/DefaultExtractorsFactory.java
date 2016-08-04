@@ -129,6 +129,13 @@ public final class DefaultExtractorsFactory implements ExtractorsFactory {
         } catch (ClassNotFoundException e) {
           // Extractor not found.
         }
+        try {
+          extractorClasses.add(
+              Class.forName("com.google.android.exoplayer2.ext.live555.RtspExtractor")
+                  .asSubclass(Extractor.class));
+        } catch (ClassNotFoundException e) {
+          // Extractor not found.
+        }
         defaultExtractorClasses = extractorClasses;
       }
     }

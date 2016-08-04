@@ -55,3 +55,6 @@ extensions/flac/src/main/jni/flac
 
 # FFmpeg extension
 extensions/ffmpeg/src/main/jni/ffmpeg
+
+# live555 extension
+extensions/live555/src/main/jni/live

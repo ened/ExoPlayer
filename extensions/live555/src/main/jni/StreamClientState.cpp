@@ -1,0 +1,25 @@
+//
+// Created by Sebastian Roth on 6/24/16.
+//
+
+#include "StreamClientState.hpp"
+
+#include "liveMedia.hh"
+#include "BasicUsageEnvironment.hh"  // NOLINT
+
+// Implementation of "StreamClientState":
+
+StreamClientState::StreamClientState()
+  : iter(NULL), session(NULL), subsession(NULL), streamTimerTask(NULL), duration(0.0) {
+}
+
+StreamClientState::~StreamClientState() {
+  delete iter;
+  if (session != NULL) {
+    // We also need to delete "session", and unschedule "streamTimerTask" (if set)
+    UsageEnvironment& env = session->envir(); // alias
+
+    env.taskScheduler().unscheduleDelayedTask(streamTimerTask);
+    Medium::close(session);
+  }
+}

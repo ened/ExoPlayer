@@ -15,11 +15,11 @@
  */
 package com.google.android.exoplayer2.upstream;
 
-import com.google.android.exoplayer2.util.Assertions;
-import com.google.android.exoplayer2.util.Util;
-
 import android.content.Context;
 import android.net.Uri;
+
+import com.google.android.exoplayer2.util.Assertions;
+import com.google.android.exoplayer2.util.Util;
 
 import java.io.IOException;
 
@@ -42,11 +42,13 @@ public final class DefaultDataSource implements DataSource {
 
   private static final String SCHEME_ASSET = "asset";
   private static final String SCHEME_CONTENT = "content";
+  private static final String SCHEME_RTSP= "rtsp";
 
   private final DataSource baseDataSource;
   private final DataSource fileDataSource;
   private final DataSource assetDataSource;
   private final DataSource contentDataSource;
+  private final DataSource rtspDataSource;
 
   private DataSource dataSource;
 
@@ -81,6 +83,20 @@ public final class DefaultDataSource implements DataSource {
     this.fileDataSource = new FileDataSource(listener);
     this.assetDataSource = new AssetDataSource(context, listener);
     this.contentDataSource = new ContentDataSource(context, listener);
+
+    DataSource dataSource;
+    try {
+      Class<? extends DataSource> rtspDataSource = Class.forName("com.google.android.exoplayer2.ext.live555.RtspDataSource")
+              .asSubclass(DataSource.class);
+      dataSource = rtspDataSource.newInstance();
+    } catch (ClassNotFoundException e) {
+      dataSource = null;
+    } catch (InstantiationException e) {
+      dataSource = null;
+    } catch (IllegalAccessException e) {
+      dataSource = null;
+    }
+    this.rtspDataSource = dataSource;
   }
 
   @Override
@@ -98,6 +114,13 @@ public final class DefaultDataSource implements DataSource {
       dataSource = assetDataSource;
     } else if (SCHEME_CONTENT.equals(scheme)) {
       dataSource = contentDataSource;
+    } else if (SCHEME_RTSP.equals(scheme)) {
+      if (rtspDataSource != null) {
+        dataSource = rtspDataSource;
+      } else {
+        // TODO: Should warn that RTSP scheme is being opened with an baseDataSource instance!
+        dataSource = baseDataSource;
+      }
     } else {
       dataSource = baseDataSource;
     }

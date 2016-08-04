@@ -359,6 +359,15 @@
     ]
   },
   {
+    "name": "RTSP",
+    "samples": [
+      {
+        "name": "Big Buck Bunny (RTSP)",
+        "uri": "rtsp://184.72.239.149/vod/mp4:BigBuckBunny_115k.mov"
+      }
+    ]
+  },
+  {
     "name": "Playlists",
     "samples": [
       {
