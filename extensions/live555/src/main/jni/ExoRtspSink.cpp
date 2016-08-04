@@ -27,6 +27,8 @@ ExoRtspSink::ExoRtspSink(UsageEnvironment &env, MediaSubsession &subsession, cha
 
     pthread_mutex_init ( &bufferMutex, NULL);
 
+    env << "Stream ID: " << streamId << ", codec: " << fSubsession.codecName() << "\n";
+
     // bufferMutex = PTHREAD_MUTEX_INITIALIZER;
     bufferFrameSize = 0;
     sPropRecord = NULL;
@@ -124,6 +126,7 @@ Boolean ExoRtspSink::continuePlaying() {
 }
 
 int ExoRtspSink::retrieveSPSPPS(u_int8_t **destination) {
+
     pthread_mutex_lock(&bufferMutex);
 
     if (sPropRecord == NULL) {

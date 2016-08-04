@@ -7,6 +7,7 @@ import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DataSpec;
 import com.google.android.exoplayer2.upstream.DefaultDataSource;
+import com.google.android.exoplayer2.util.ParsableByteArray;
 
 import java.io.IOException;
 
@@ -15,6 +16,7 @@ import java.io.IOException;
  */
 public class RtspDataSource implements DataSource {
 
+    public static final byte[] FAKE_HEADER = new byte[]{32, 32, 55, 11};
     /**
      * Whether the underlying live555 library is available.
      */
@@ -70,53 +72,37 @@ public class RtspDataSource implements DataSource {
         Log.d(TAG, "close() called");
     }
 
-    private byte[] currentFrame;
-    private byte[] spspps;
+    private ParsableByteArray frameWithSps;
 
     @Override
     public int read(final byte[] buffer, final int offset, final int readLength) throws IOException {
 
-//        boolean newFrame = false;
+        // Log.d(TAG, "read() called with: buffer = [" + buffer + "], offset = [" + offset + "], readLength = [" + readLength + "]");
 
-        while (spspps == null || spspps.length == 0) {
-            spspps = retrieveSPSPPS(rtspClient);
-//            newFrame = true;
+        if (frameWithSps == null || frameWithSps.bytesLeft() == 0) {
+            byte[] tmpSpsPPS = null;
+            while (tmpSpsPPS == null || tmpSpsPPS.length == 0) {
+                tmpSpsPPS = retrieveSPSPPS(rtspClient);
+            }
+
+            byte[] tmpFrame = null;
+            while (tmpFrame == null || tmpFrame.length == 0) {
+                tmpFrame = getFrame(rtspClient);
+            }
+
+            byte[] fullFrame = new byte[tmpSpsPPS.length + tmpFrame.length + 4];
+
+            System.arraycopy(FAKE_HEADER, 0, fullFrame, 0, FAKE_HEADER.length);
+            System.arraycopy(tmpSpsPPS, 0, fullFrame, FAKE_HEADER.length, tmpSpsPPS.length);
+            System.arraycopy(tmpFrame, 0, fullFrame, tmpSpsPPS.length + FAKE_HEADER.length, tmpFrame.length);
+
+            frameWithSps = new ParsableByteArray(fullFrame);
         }
 
-        while (currentFrame == null || currentFrame.length == 0) {
-            currentFrame = getFrame(rtspClient);
-        }
+        int frameLength = Math.min(frameWithSps.bytesLeft(), readLength);
+        frameWithSps.readBytes(buffer, offset, frameLength);
 
-
-        int ppsLength = Math.min(spspps.length, readLength);
-        System.arraycopy(spspps, 0, buffer, offset, ppsLength);
-
-        int frameLength = Math.min(currentFrame.length, readLength - ppsLength);
-        System.arraycopy(currentFrame, 0, buffer, offset + spspps.length, frameLength);
-
-        // Reset
-        currentFrame = null;
-
-        return ppsLength + frameLength;
-
-//        boolean newFrame = false;
-
-//        while (currentFrame == null || currentFrame.length == 0) {
-//            currentFrame = getFrame(rtspClient);
-//            newFrame = true;
-//        }
-
-//        Log.d(TAG, "read(): buffer = [" + buffer.length + "], offset = [" + offset + "], readLength = [" + readLength + "]" + " frame.length: "
-//                + currentFrame.length + (newFrame ? "!" : ""));
-
-//        int toRead = Math.min(currentFrame.length, readLength);
-//        System.arraycopy(currentFrame, 0, buffer, offset, toRead);
-//
-//        byte[] smallerData = new byte[currentFrame.length - toRead];
-//        System.arraycopy(currentFrame, toRead, smallerData, 0, currentFrame.length - toRead);
-//        currentFrame = smallerData;
-//
-//        return toRead;
+        return frameLength;
     }
 
     private static native String getLibLive555Version();
