@@ -6,6 +6,7 @@ import android.util.Log;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DataSpec;
+import com.google.android.exoplayer2.upstream.DefaultDataSource;
 
 import java.io.IOException;
 
@@ -17,7 +18,7 @@ public class RtspDataSource implements DataSource {
     /**
      * Whether the underlying live555 library is available.
      */
-    public static final boolean IS_AVAILABLE;
+    private static final boolean IS_AVAILABLE;
 
     private static final String TAG = RtspDataSource.class.getSimpleName();
 
@@ -34,8 +35,19 @@ public class RtspDataSource implements DataSource {
 
     private long rtspClient;
 
-    public static String getLive555Version() {
+    private static String getLive555Version() {
         return IS_AVAILABLE ? getLibLive555Version() : null;
+    }
+
+    /**
+     * @throws IllegalAccessException if the native library was not found. {@link DefaultDataSource} will use this information.
+     */
+    public RtspDataSource() throws IllegalAccessException {
+        if (IS_AVAILABLE) {
+            Log.d(TAG, "RTSP Data source loaded, live555 version: " + getLive555Version());
+        } else {
+            throw new IllegalAccessException("Live555 was not found.");
+        }
     }
 
     @Override
