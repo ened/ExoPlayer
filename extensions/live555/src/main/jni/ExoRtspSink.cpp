@@ -25,23 +25,24 @@ ExoRtspSink::ExoRtspSink(UsageEnvironment &env, MediaSubsession &subsession, cha
     fReceiveBuffer = new u_int8_t[DUMMY_SINK_RECEIVE_BUFFER_SIZE];
     fSharedBuffer = NULL;
 
-    pthread_mutex_init ( &bufferMutex, NULL);
+    pthread_mutex_init(&bufferMutex, NULL);
 
     env << "Stream ID: " << streamId << ", codec: " << fSubsession.codecName() << "\n";
 
     // bufferMutex = PTHREAD_MUTEX_INITIALIZER;
-    bufferFrameSize = 0;
+    iFrameSize = 0;
     sPropRecord = NULL;
 }
 
 ExoRtspSink::~ExoRtspSink() {
+    // This buffer is used by Live555 internally to store the frame.
     delete[] fReceiveBuffer;
+
     delete[] fStreamId;
 
-    if (fSharedBuffer) {
-        delete[] fSharedBuffer;
-        fSharedBuffer = NULL;
-    }
+    // These flags are used for getting the data out.
+    delete[] fSharedBuffer;
+    delete[] sPropRecord;
 }
 
 void ExoRtspSink::afterGettingFrame(void *clientData, unsigned frameSize,
@@ -57,7 +58,7 @@ void ExoRtspSink::afterGettingFrame(void *clientData, unsigned frameSize,
 
 void ExoRtspSink::afterGettingFrame(unsigned frameSize, unsigned numTruncatedBytes,
                                     struct timeval presentationTime,
-                                    unsigned /*durationInMicroseconds*/) {
+                                    unsigned durationInMicroseconds) {
     // We've just received a frame of data.  (Optionally) print out information about it:
 #ifdef DEBUG_PRINT_EACH_RECEIVED_FRAME
     if (fStreamId != NULL) envir() << "Stream \"" << fStreamId << "\"; ";
@@ -80,34 +81,34 @@ void ExoRtspSink::afterGettingFrame(unsigned frameSize, unsigned numTruncatedByt
 
     pthread_mutex_lock(&bufferMutex);
 
-    if (fSharedBuffer) {
-        delete[] fSharedBuffer;
-        fSharedBuffer = NULL;
-    }
-
-    // envir() << "frameSize after received: " << frameSize << "\n";
+    delete[] fSharedBuffer;
 
     unsigned int records = 0;
     SPropRecord *pPropRecord = parseSPropParameterSets(fSubsession.fmtp_spropparametersets(),
                                                        records);
 
-    if (records > 1) {
-//         envir() << "params: " << fSubsession.fmtp_spropparametersets() << " records: " << records << "\n";
+    if (records == 2) {
+        delete[] sPropRecord;
 
-//        if (sPropRecord != NULL) {
-//            delete[] sPropRecord;
-//            sPropRecord = NULL;
-//        }
+        // TODO: Check.
+//        envir() << "records: " << records << "\n";
+
+        envir() << "1: " << pPropRecord[0].sPropBytes << ", 2: " << pPropRecord[1].sPropBytes << "\n";
 
         sPropRecord = pPropRecord;
     } else {
-        sPropRecord = NULL;
+        // Keep the last record.
+//        sPropRecord = NULL;
     }
 
+    // Fill the shared buffer
     fSharedBuffer = new u_int8_t[frameSize];
     memcpy(fSharedBuffer, fReceiveBuffer, frameSize);
+    iFrameSize = frameSize;
 
-    bufferFrameSize = frameSize;
+    // Remember this frames presentation time
+    u32FrameTimeUs = presentationTime.tv_usec;
+    u16DurationMs = durationInMicroseconds;
 
     pthread_mutex_unlock(&bufferMutex);
 
@@ -125,7 +126,7 @@ Boolean ExoRtspSink::continuePlaying() {
     return True;
 }
 
-int ExoRtspSink::retrieveSPSPPS(u_int8_t **destination) {
+size_t ExoRtspSink::retrieveSPSPPS(u_int8_t **destination) {
 
     pthread_mutex_lock(&bufferMutex);
 
@@ -147,13 +148,13 @@ int ExoRtspSink::retrieveSPSPPS(u_int8_t **destination) {
     return size;
 }
 
-int ExoRtspSink::copySharedBuffer(u_int8_t **destination) {
+size_t ExoRtspSink::copySharedBuffer(u_int8_t **destination) {
 
     pthread_mutex_lock(&bufferMutex);
 
-//    envir() << "framesize: " << bufferFrameSize << "\n";
+//    envir() << "framesize: " << iFrameSize << "\n";
 
-    size_t size = bufferFrameSize;
+    size_t size = iFrameSize;
 
     if (size == 0) {
         pthread_mutex_unlock(&bufferMutex);
