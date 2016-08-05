@@ -10,6 +10,7 @@ import com.google.android.exoplayer2.upstream.DefaultDataSource;
 import com.google.android.exoplayer2.util.ParsableByteArray;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
 /**
  * @author Sebastian Roth <sebastianroth@n2.com.hk>
@@ -17,36 +18,17 @@ import java.io.IOException;
 public class RtspDataSource implements DataSource {
 
     public static final byte[] FAKE_HEADER = new byte[]{32, 32, 55, 11};
-    /**
-     * Whether the underlying live555 library is available.
-     */
-    private static final boolean IS_AVAILABLE;
 
     private static final String TAG = RtspDataSource.class.getSimpleName();
 
-    static {
-        boolean isAvailable;
-        try {
-            System.loadLibrary("live555JNI");
-            isAvailable = true;
-        } catch (UnsatisfiedLinkError exception) {
-            isAvailable = false;
-        }
-        IS_AVAILABLE = isAvailable;
-    }
-
-    private long rtspClient;
-
-    private static String getLive555Version() {
-        return IS_AVAILABLE ? getLibLive555Version() : null;
-    }
+    private Live555Jni live555Jni = new Live555Jni();
 
     /**
      * @throws IllegalAccessException if the native library was not found. {@link DefaultDataSource} will use this information.
      */
     public RtspDataSource() throws IllegalAccessException {
-        if (IS_AVAILABLE) {
-            Log.d(TAG, "RTSP Data source loaded, live555 version: " + getLive555Version());
+        if (Live555Jni.IS_AVAILABLE) {
+            Log.d(TAG, "RTSP Data source loaded, live555 version: " + Live555Jni.getLibLive555Version());
         } else {
             throw new IllegalAccessException("Live555 was not found.");
         }
@@ -62,7 +44,7 @@ public class RtspDataSource implements DataSource {
 
         Log.d(TAG, "open() called with: dataSpec = [" + dataSpec + "]");
 
-        rtspClient = openUrl(dataSpec.uri.toString());
+        live555Jni.openUrl(dataSpec.uri);
 
         return C.LENGTH_UNBOUNDED;
     }
@@ -80,21 +62,23 @@ public class RtspDataSource implements DataSource {
         // Log.d(TAG, "read() called with: buffer = [" + buffer + "], offset = [" + offset + "], readLength = [" + readLength + "]");
 
         if (frameWithSps == null || frameWithSps.bytesLeft() == 0) {
-            byte[] tmpSpsPPS = null;
-            while (tmpSpsPPS == null || tmpSpsPPS.length == 0) {
-                tmpSpsPPS = retrieveSPSPPS(rtspClient);
+            while (!live555Jni.fetchFrame()) {
+                try {
+                    Thread.sleep(100, 0);
+                } catch (InterruptedException e) {
+                    return C.RESULT_END_OF_INPUT;
+                }
+                // Try again for another frame.
             }
 
-            byte[] tmpFrame = null;
-            while (tmpFrame == null || tmpFrame.length == 0) {
-                tmpFrame = getFrame(rtspClient);
-            }
+            ByteBuffer b1 = live555Jni.getSpsPps();
+            ByteBuffer b2 = live555Jni.getFrame();
 
-            byte[] fullFrame = new byte[tmpSpsPPS.length + tmpFrame.length + 4];
+            byte[] fullFrame =new byte[b1.array().length + b2.array().length + 4];
 
             System.arraycopy(FAKE_HEADER, 0, fullFrame, 0, FAKE_HEADER.length);
-            System.arraycopy(tmpSpsPPS, 0, fullFrame, FAKE_HEADER.length, tmpSpsPPS.length);
-            System.arraycopy(tmpFrame, 0, fullFrame, tmpSpsPPS.length + FAKE_HEADER.length, tmpFrame.length);
+            System.arraycopy(b1.array(), 0, fullFrame, FAKE_HEADER.length, b1.array().length);
+            System.arraycopy(b2.array(), 0, fullFrame, b1.array().length + FAKE_HEADER.length, b2.array().length);
 
             frameWithSps = new ParsableByteArray(fullFrame);
         }
@@ -104,12 +88,4 @@ public class RtspDataSource implements DataSource {
 
         return frameLength;
     }
-
-    private static native String getLibLive555Version();
-
-    public static native long openUrl(String url);
-
-    public static native byte[] getFrame(long rtspClient);
-
-    public static native byte[] retrieveSPSPPS(long rtspClient);
 }

@@ -94,6 +94,7 @@ public class RtspExtractor implements Extractor {
         int sizeRead = input.read(data, 0, data.length);
 
         ParsableByteArray parsableByteArray = new ParsableByteArray(data);
+
         trackOutput.sampleData(parsableByteArray, sizeRead);
         trackOutput.sampleMetadata(0, 0, sizeRead, 0, null);
 

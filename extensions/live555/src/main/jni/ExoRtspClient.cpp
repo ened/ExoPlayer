@@ -19,7 +19,7 @@ UsageEnvironment &operator<<(UsageEnvironment &env, const MediaSubsession &subse
 
 // Implementation of the RTSP 'response handlers':
 
-void continueAfterDESCRIBE(RTSPClient *rtspClient, int resultCode, char *resultString) {
+void exoContinueAfterDESCRIBE(RTSPClient *rtspClient, int resultCode, char *resultString) {
     do {
         UsageEnvironment &env = rtspClient->envir(); // alias
         StreamClientState &scs = ((ExoRtspClient *) rtspClient)->scs; // alias
@@ -50,19 +50,19 @@ void continueAfterDESCRIBE(RTSPClient *rtspClient, int resultCode, char *resultS
         // calling "MediaSubsession::initiate()", and then sending a RTSP "SETUP" command, on each one.
         // (Each 'subsession' will have its own data source.)
         scs.iter = new MediaSubsessionIterator(*scs.session);
-        setupNextSubsession(rtspClient);
+        exoSetupNextSubsession(rtspClient);
         return;
     } while (0);
 
     // An unrecoverable error occurred with this stream.
-    shutdownStream(rtspClient);
+    exoShutdownStream(rtspClient);
 }
 
 // By default, we request that the server stream its data using RTP/UDP.
 // If, instead, you want to request that the server stream via RTP-over-TCP, change the following to True:
 #define REQUEST_STREAMING_OVER_TCP False
 
-void setupNextSubsession(RTSPClient *rtspClient) {
+void exoSetupNextSubsession(RTSPClient *rtspClient) {
     UsageEnvironment &env = rtspClient->envir(); // alias
     StreamClientState &scs = ((ExoRtspClient *) rtspClient)->scs; // alias
 
@@ -71,7 +71,7 @@ void setupNextSubsession(RTSPClient *rtspClient) {
         if (!next->initiate()) {
             env << *rtspClient << "Failed to initiate the \"" << *next <<
             "\" subsession: " << env.getResultMsg() << "\n";
-            setupNextSubsession(rtspClient); // give up on this subsession; go to the next one
+            exoSetupNextSubsession(rtspClient); // give up on this subsession; go to the next one
         } else {
             env << *rtspClient << "Initiated the \"" << *next << "\" subsession (";
             if (next->rtcpIsMuxed()) {
@@ -83,7 +83,7 @@ void setupNextSubsession(RTSPClient *rtspClient) {
             env << ")\n";
 
             // Continue setting up this subsession, by sending a RTSP "SETUP" command:
-            rtspClient->sendSetupCommand(*next, continueAfterSETUP, False,
+            rtspClient->sendSetupCommand(*next, exoContinueAfterSETUP, False,
                                          REQUEST_STREAMING_OVER_TCP);
 
             scs.setSubsession(next);
@@ -94,15 +94,15 @@ void setupNextSubsession(RTSPClient *rtspClient) {
     // We've finished setting up all of the subsessions.  Now, send a RTSP "PLAY" command to start the streaming:
     if (scs.session->absStartTime() != NULL) {
         // Special case: The stream is indexed by 'absolute' time, so send an appropriate "PLAY" command:
-        rtspClient->sendPlayCommand(*scs.session, continueAfterPLAY, scs.session->absStartTime(),
+        rtspClient->sendPlayCommand(*scs.session, exoContinueAfterPLAY, scs.session->absStartTime(),
                                     scs.session->absEndTime());
     } else {
         scs.duration = scs.session->playEndTime() - scs.session->playStartTime();
-        rtspClient->sendPlayCommand(*scs.session, continueAfterPLAY);
+        rtspClient->sendPlayCommand(*scs.session, exoContinueAfterPLAY);
     }
 }
 
-void continueAfterSETUP(RTSPClient *rtspClient, int resultCode, char *resultString) {
+void exoContinueAfterSETUP(RTSPClient *rtspClient, int resultCode, char *resultString) {
     do {
         UsageEnvironment &env = rtspClient->envir(); // alias
         StreamClientState &scs = ((ExoRtspClient *) rtspClient)->scs; // alias
@@ -139,19 +139,19 @@ void continueAfterSETUP(RTSPClient *rtspClient, int resultCode, char *resultStri
         "\" subsession\n";
         subsession->miscPtr = rtspClient; // a hack to let subsession handler functions get the "RTSPClient" from the subsession
         subsession->sink->startPlaying(*(subsession->readSource()),
-                                           subsessionAfterPlaying, subsession);
+                                       exoSubsessionAfterPlaying, subsession);
         // Also set a handler to be called if a RTCP "BYE" arrives for this subsession:
         if (subsession->rtcpInstance() != NULL) {
-            subsession->rtcpInstance()->setByeHandler(subsessionByeHandler, subsession);
+            subsession->rtcpInstance()->setByeHandler(exoSubsessionByeHandler, subsession);
         }
     } while (0);
     delete[] resultString;
 
     // Set up the next subsession, if any:
-    setupNextSubsession(rtspClient);
+    exoSetupNextSubsession(rtspClient);
 }
 
-void continueAfterPLAY(RTSPClient *rtspClient, int resultCode, char *resultString) {
+void exoContinueAfterPLAY(RTSPClient *rtspClient, int resultCode, char *resultString) {
     Boolean success = False;
 
     do {
@@ -172,7 +172,7 @@ void continueAfterPLAY(RTSPClient *rtspClient, int resultCode, char *resultStrin
             scs.duration += delaySlop;
             unsigned uSecsToDelay = (unsigned) (scs.duration * 1000000);
             scs.streamTimerTask = env.taskScheduler().scheduleDelayedTask(uSecsToDelay,
-                                                                          (TaskFunc *) streamTimerHandler,
+                                                                          (TaskFunc *) exoStreamTimerHandler,
                                                                           rtspClient);
         }
 
@@ -188,14 +188,14 @@ void continueAfterPLAY(RTSPClient *rtspClient, int resultCode, char *resultStrin
 
     if (!success) {
         // An unrecoverable error occurred with this stream.
-        shutdownStream(rtspClient);
+        exoShutdownStream(rtspClient);
     }
 }
 
 
 // Implementation of the other event handlers:
 
-void subsessionAfterPlaying(void *clientData) {
+void exoSubsessionAfterPlaying(void *clientData) {
     MediaSubsession *subsession = (MediaSubsession *) clientData;
     RTSPClient *rtspClient = (RTSPClient *) (subsession->miscPtr);
 
@@ -211,10 +211,10 @@ void subsessionAfterPlaying(void *clientData) {
     }
 
     // All subsessions' streams have now been closed, so shutdown the client:
-    shutdownStream(rtspClient);
+    exoShutdownStream(rtspClient);
 }
 
-void subsessionByeHandler(void *clientData) {
+void exoSubsessionByeHandler(void *clientData) {
     MediaSubsession *subsession = (MediaSubsession *) clientData;
     RTSPClient *rtspClient = (RTSPClient *) subsession->miscPtr;
     UsageEnvironment &env = rtspClient->envir(); // alias
@@ -222,20 +222,20 @@ void subsessionByeHandler(void *clientData) {
     env << *rtspClient << "Received RTCP \"BYE\" on \"" << *subsession << "\" subsession\n";
 
     // Now act as if the subsession had closed:
-    subsessionAfterPlaying(subsession);
+    exoSubsessionAfterPlaying(subsession);
 }
 
-void streamTimerHandler(void *clientData) {
+void exoStreamTimerHandler(void *clientData) {
     ExoRtspClient *rtspClient = (ExoRtspClient *) clientData;
     StreamClientState &scs = rtspClient->scs; // alias
 
     scs.streamTimerTask = NULL;
 
     // Shut down the stream:
-    shutdownStream(rtspClient);
+    exoShutdownStream(rtspClient);
 }
 
-void shutdownStream(RTSPClient *rtspClient, int exitCode) {
+void exoShutdownStream(RTSPClient *rtspClient) {
     UsageEnvironment &env = rtspClient->envir(); // alias
     StreamClientState &scs = ((ExoRtspClient *) rtspClient)->scs; // alias
 
@@ -268,17 +268,7 @@ void shutdownStream(RTSPClient *rtspClient, int exitCode) {
 
     env << *rtspClient << "Closing the stream.\n";
     Medium::close(rtspClient);
-    // Note that this will also cause this stream's "StreamClientState" structure to get reclaimed.
-
-//  if (--rtspClientCount == 0) {
-    // The final stream has ended, so exit the application now.
-    // (Of course, if you're embedding this code into your own application, you might want to comment this out,
-    // and replace it with "eventLoopWatchVariable = 1;", so that we leave the LIVE555 event loop, and continue running "main()".)
-//    exit(exitCode);
-//  }
 }
-
-
 
 // Implementation of "ExoRtspClient":
 
@@ -288,10 +278,24 @@ ExoRtspClient *ExoRtspClient::createNew(UsageEnvironment &env, char const *rtspU
     return new ExoRtspClient(env, rtspURL, verbosityLevel, applicationName, tunnelOverHTTPPortNum);
 }
 
+/* static */ void *ExoRtspClient::eventLooper(void *input) {
+    ExoRtspClient *client = (ExoRtspClient *) input;
+
+    client->envir().taskScheduler().doEventLoop(&client->stop);
+}
+
+void ExoRtspClient::stopClient() {
+    exoShutdownStream(this);
+
+    // Set the live555 stop variable.
+    stop = 1;
+}
+
 ExoRtspClient::ExoRtspClient(UsageEnvironment &env, char const *rtspURL,
                              int verbosityLevel, char const *applicationName,
                              portNumBits tunnelOverHTTPPortNum)
-        : RTSPClient(env, rtspURL, verbosityLevel, applicationName, tunnelOverHTTPPortNum, -1) {
+        : RTSPClient(env, rtspURL, verbosityLevel, applicationName, tunnelOverHTTPPortNum, -1),
+          stop(0) {
 }
 
 ExoRtspClient::~ExoRtspClient() {
