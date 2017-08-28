@@ -60,6 +60,7 @@ dependencies {
     withExtensionsCompile project(path: modulePrefix + 'extension-ffmpeg')
     withExtensionsCompile project(path: modulePrefix + 'extension-flac')
     withExtensionsCompile project(path: modulePrefix + 'extension-ima')
+    withExtensionsCompile project(path: modulePrefix + 'extension-live555')
     withExtensionsCompile project(path: modulePrefix + 'extension-opus')
     withExtensionsCompile project(path: modulePrefix + 'extension-vp9')
 }

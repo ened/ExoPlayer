@@ -37,11 +37,11 @@ public class RtspExtractor implements Extractor {
         Log.d(TAG, "init() called with: extractorOutput = [" + output + "]");
 
         this.extractorOutput = output;
-        trackOutput = extractorOutput.track(0);
+        trackOutput = extractorOutput.track(0, C.TRACK_TYPE_VIDEO);
         extractorOutput.endTracks();
 
 
-        output.seekMap(new SeekMap.Unseekable(C.UNSET_TIME_US));
+        output.seekMap(new SeekMap.Unseekable(C.TIME_UNSET));
     }
 
     @Override
@@ -102,7 +102,7 @@ public class RtspExtractor implements Extractor {
     }
 
     @Override
-    public void seek(long position) {
+    public void seek(long position, long timeUs) {
         Log.d(TAG, "seek() called with: position = [" + position + "]");
     }
 

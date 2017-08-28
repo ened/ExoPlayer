@@ -46,7 +46,7 @@ public class RtspDataSource implements DataSource {
 
         live555Jni.openUrl(dataSpec.uri);
 
-        return C.LENGTH_UNBOUNDED;
+        return C.LENGTH_UNSET;
     }
 
     @Override

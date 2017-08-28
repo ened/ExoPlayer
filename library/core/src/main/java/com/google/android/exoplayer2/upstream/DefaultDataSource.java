@@ -48,6 +48,7 @@ public final class DefaultDataSource implements DataSource {
   private static final String SCHEME_ASSET = "asset";
   private static final String SCHEME_CONTENT = "content";
   private static final String SCHEME_RTMP = "rtmp";
+  private static final String SCHEME_RTSP = "rtsp";
 
   private final Context context;
   private final TransferListener<? super DataSource> listener;
@@ -59,6 +60,7 @@ public final class DefaultDataSource implements DataSource {
   private DataSource assetDataSource;
   private DataSource contentDataSource;
   private DataSource rtmpDataSource;
+  private DataSource rtspDataSource;
   private DataSource dataSchemeDataSource;
 
   private DataSource dataSource;
@@ -132,6 +134,8 @@ public final class DefaultDataSource implements DataSource {
       dataSource = getContentDataSource();
     } else if (SCHEME_RTMP.equals(scheme)) {
       dataSource = getRtmpDataSource();
+    } else if (SCHEME_RTSP.equals(scheme)) {
+      dataSource = getRtspDataSource();
     } else if (DataSchemeDataSource.SCHEME_DATA.equals(scheme)) {
       dataSource = getDataSchemeDataSource();
     } else {
@@ -204,6 +208,29 @@ public final class DefaultDataSource implements DataSource {
       }
     }
     return rtmpDataSource;
+  }
+
+  private DataSource getRtspDataSource() {
+    if (rtspDataSource == null) {
+      try {
+        Class<?> clazz = Class.forName("com.google.android.exoplayer2.ext.live555.RtspDataSource");
+        rtspDataSource = (DataSource) clazz.getDeclaredConstructor().newInstance();
+      } catch (ClassNotFoundException e) {
+        Log.w(TAG, "Attempting to play RTSP stream without depending on the RTSP extension");
+      } catch (InstantiationException e) {
+        Log.e(TAG, "Error instantiating RtspDataSource", e);
+      } catch (IllegalAccessException e) {
+        Log.e(TAG, "Error instantiating RtspDataSource", e);
+      } catch (NoSuchMethodException e) {
+        Log.e(TAG, "Error instantiating RtspDataSource", e);
+      } catch (InvocationTargetException e) {
+        Log.e(TAG, "Error instantiating RtspDataSource", e);
+      }
+      if (rtspDataSource == null) {
+        rtspDataSource = baseDataSource;
+      }
+    }
+    return rtspDataSource;
   }
 
   private DataSource getDataSchemeDataSource() {
