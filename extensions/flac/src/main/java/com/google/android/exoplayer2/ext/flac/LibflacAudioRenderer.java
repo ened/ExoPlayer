@@ -15,14 +15,13 @@
  */
 package com.google.android.exoplayer2.ext.flac;
 
-import com.google.android.exoplayer2.Format;
-import com.google.android.exoplayer2.audio.AudioCapabilities;
-import com.google.android.exoplayer2.audio.AudioRendererEventListener;
-import com.google.android.exoplayer2.audio.AudioTrack;
-import com.google.android.exoplayer2.audio.SimpleDecoderAudioRenderer;
-import com.google.android.exoplayer2.util.MimeTypes;
-
 import android.os.Handler;
+import com.google.android.exoplayer2.Format;
+import com.google.android.exoplayer2.audio.AudioProcessor;
+import com.google.android.exoplayer2.audio.AudioRendererEventListener;
+import com.google.android.exoplayer2.audio.SimpleDecoderAudioRenderer;
+import com.google.android.exoplayer2.drm.ExoMediaCrypto;
+import com.google.android.exoplayer2.util.MimeTypes;
 
 /**
  * Decodes and renders audio using the native Flac decoder.
@@ -30,13 +29,6 @@ import android.os.Handler;
 public class LibflacAudioRenderer extends SimpleDecoderAudioRenderer {
 
   private static final int NUM_BUFFERS = 16;
-
-  /**
-   * Returns whether the underlying libflac library is available.
-   */
-  public static boolean isLibflacAvailable() {
-    return FlacJni.IS_AVAILABLE;
-  }
 
   public LibflacAudioRenderer() {
     this(null, null);
@@ -46,32 +38,22 @@ public class LibflacAudioRenderer extends SimpleDecoderAudioRenderer {
    * @param eventHandler A handler to use when delivering events to {@code eventListener}. May be
    *     null if delivery of events is not required.
    * @param eventListener A listener of events. May be null if delivery of events is not required.
-   */
-  public LibflacAudioRenderer(Handler eventHandler, AudioRendererEventListener eventListener) {
-    super(eventHandler, eventListener);
-  }
-
-  /**
-   * @param eventHandler A handler to use when delivering events to {@code eventListener}. May be
-   *     null if delivery of events is not required.
-   * @param eventListener A listener of events. May be null if delivery of events is not required.
-   * @param audioCapabilities The audio capabilities for playback on this device. May be null if the
-   *     default capabilities (no encoded audio passthrough support) should be assumed.
-   * @param streamType The type of audio stream for the {@link AudioTrack}.
+   * @param audioProcessors Optional {@link AudioProcessor}s that will process audio before output.
    */
   public LibflacAudioRenderer(Handler eventHandler, AudioRendererEventListener eventListener,
-      AudioCapabilities audioCapabilities, int streamType) {
-    super(eventHandler, eventListener, audioCapabilities, streamType);
+      AudioProcessor... audioProcessors) {
+    super(eventHandler, eventListener, audioProcessors);
   }
 
   @Override
-  public int supportsFormat(Format format) {
-    return isLibflacAvailable() && MimeTypes.AUDIO_FLAC.equalsIgnoreCase(format.sampleMimeType)
+  protected int supportsFormatInternal(Format format) {
+    return FlacLibrary.isAvailable() && MimeTypes.AUDIO_FLAC.equalsIgnoreCase(format.sampleMimeType)
         ? FORMAT_HANDLED : FORMAT_UNSUPPORTED_TYPE;
   }
 
   @Override
-  protected FlacDecoder createDecoder(Format format) throws FlacDecoderException {
+  protected FlacDecoder createDecoder(Format format, ExoMediaCrypto mediaCrypto)
+      throws FlacDecoderException {
     return new FlacDecoder(NUM_BUFFERS, NUM_BUFFERS, format.initializationData);
   }
 

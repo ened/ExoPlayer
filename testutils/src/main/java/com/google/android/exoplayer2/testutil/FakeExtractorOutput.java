@@ -15,17 +15,14 @@
  */
 package com.google.android.exoplayer2.testutil;
 
-import com.google.android.exoplayer2.extractor.ExtractorOutput;
-import com.google.android.exoplayer2.extractor.SeekMap;
-
 import android.app.Instrumentation;
 import android.util.SparseArray;
-import junit.framework.Assert;
-import junit.framework.TestCase;
-
+import com.google.android.exoplayer2.extractor.ExtractorOutput;
+import com.google.android.exoplayer2.extractor.SeekMap;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
+import junit.framework.Assert;
 
 /**
  * A fake {@link ExtractorOutput}.
@@ -33,13 +30,11 @@ import java.io.PrintWriter;
 public final class FakeExtractorOutput implements ExtractorOutput, Dumper.Dumpable {
 
   /**
-   * If true, makes {@link #assertOutput(Instrumentation, String)} method write dump result to 
-   * {@code /sdcard/Android/data/apk_package/ + dumpfile} file instead of comparing it with an 
+   * If true, makes {@link #assertOutput(Instrumentation, String)} method write dump result to
+   * {@code /sdcard/Android/data/apk_package/ + dumpfile} file instead of comparing it with an
    * existing file.
    */
   private static final boolean WRITE_DUMP = false;
-
-  private final boolean allowDuplicateTrackIds;
 
   public final SparseArray<FakeTrackOutput> trackOutputs;
 
@@ -48,23 +43,17 @@ public final class FakeExtractorOutput implements ExtractorOutput, Dumper.Dumpab
   public SeekMap seekMap;
 
   public FakeExtractorOutput() {
-    this(false);
-  }
-
-  public FakeExtractorOutput(boolean allowDuplicateTrackIds) {
-    this.allowDuplicateTrackIds = allowDuplicateTrackIds;
     trackOutputs = new SparseArray<>();
   }
 
   @Override
-  public FakeTrackOutput track(int trackId) {
-    FakeTrackOutput output = trackOutputs.get(trackId);
+  public FakeTrackOutput track(int id, int type) {
+    FakeTrackOutput output = trackOutputs.get(id);
     if (output == null) {
+      Assert.assertFalse(tracksEnded);
       numberOfTracks++;
       output = new FakeTrackOutput();
-      trackOutputs.put(trackId, output);
-    } else {
-      TestCase.assertTrue("Duplicate track id: " + trackId, allowDuplicateTrackIds);
+      trackOutputs.put(id, output);
     }
     return output;
   }
@@ -97,6 +86,15 @@ public final class FakeExtractorOutput implements ExtractorOutput, Dumper.Dumpab
     }
   }
 
+  /**
+   * Asserts that dump of this {@link FakeExtractorOutput} is equal to expected dump which is read
+   * from {@code dumpFile}.
+   *
+   * <p>If assertion fails because of an intended change in the output or a new dump file needs to
+   * be created, set {@link #WRITE_DUMP} flag to true and run the test again. Instead of assertion,
+   * actual dump will be written to {@code dumpFile}. This new dump file needs to be copied to the
+   * project, {@code library/src/androidTest/assets} folder manually.
+   */
   public void assertOutput(Instrumentation instrumentation, String dumpFile) throws IOException {
     String actual = new Dumper().add(this).toString();
 

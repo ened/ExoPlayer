@@ -19,7 +19,6 @@ import com.google.android.exoplayer2.decoder.DecoderInputBuffer;
 import com.google.android.exoplayer2.decoder.SimpleDecoder;
 import com.google.android.exoplayer2.decoder.SimpleOutputBuffer;
 import com.google.android.exoplayer2.util.FlacStreamInfo;
-
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -31,7 +30,7 @@ import java.util.List;
     SimpleDecoder<DecoderInputBuffer, SimpleOutputBuffer, FlacDecoderException> {
 
   private final int maxOutputBufferSize;
-  private final FlacJni decoder;
+  private final FlacDecoderJni decoderJni;
 
   /**
    * Creates a Flac decoder.
@@ -46,16 +45,13 @@ import java.util.List;
       throws FlacDecoderException {
     super(new DecoderInputBuffer[numInputBuffers], new SimpleOutputBuffer[numOutputBuffers]);
     if (initializationData.size() != 1) {
-      throw new FlacDecoderException("Wrong number of initialization data");
+      throw new FlacDecoderException("Initialization data must be of length 1");
     }
-
-    decoder = new FlacJni();
-
-    ByteBuffer metadata = ByteBuffer.wrap(initializationData.get(0));
-    decoder.setData(metadata);
+    decoderJni = new FlacDecoderJni();
+    decoderJni.setData(ByteBuffer.wrap(initializationData.get(0)));
     FlacStreamInfo streamInfo;
     try {
-      streamInfo = decoder.decodeMetadata();
+      streamInfo = decoderJni.decodeMetadata();
     } catch (IOException | InterruptedException e) {
       // Never happens.
       throw new IllegalStateException(e);
@@ -87,13 +83,13 @@ import java.util.List;
   public FlacDecoderException decode(DecoderInputBuffer inputBuffer,
       SimpleOutputBuffer outputBuffer, boolean reset) {
     if (reset) {
-      decoder.flush();
+      decoderJni.flush();
     }
-    decoder.setData(inputBuffer.data);
+    decoderJni.setData(inputBuffer.data);
     ByteBuffer outputData = outputBuffer.init(inputBuffer.timeUs, maxOutputBufferSize);
     int result;
     try {
-      result = decoder.decodeSample(outputData);
+      result = decoderJni.decodeSample(outputData);
     } catch (IOException | InterruptedException e) {
       // Never happens.
       throw new IllegalStateException(e);
@@ -109,8 +105,7 @@ import java.util.List;
   @Override
   public void release() {
     super.release();
-    decoder.release();
+    decoderJni.release();
   }
 
 }
-

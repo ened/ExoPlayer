@@ -15,10 +15,10 @@
  */
 package com.google.android.exoplayer2.ext.flac;
 
-import com.google.android.exoplayer2.extractor.Extractor;
-import com.google.android.exoplayer2.testutil.TestUtil;
-
 import android.test.InstrumentationTestCase;
+import com.google.android.exoplayer2.extractor.Extractor;
+import com.google.android.exoplayer2.testutil.ExtractorAsserts;
+import com.google.android.exoplayer2.testutil.ExtractorAsserts.ExtractorFactory;
 
 /**
  * Unit test for {@link FlacExtractor}.
@@ -26,7 +26,7 @@ import android.test.InstrumentationTestCase;
 public class FlacExtractorTest extends InstrumentationTestCase {
 
   public void testSample() throws Exception {
-    TestUtil.assertOutput(new TestUtil.ExtractorFactory() {
+    ExtractorAsserts.assertBehavior(new ExtractorFactory() {
       @Override
       public Extractor create() {
         return new FlacExtractor();

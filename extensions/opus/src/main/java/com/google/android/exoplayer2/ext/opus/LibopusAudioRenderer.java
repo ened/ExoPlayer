@@ -15,14 +15,15 @@
  */
 package com.google.android.exoplayer2.ext.opus;
 
-import com.google.android.exoplayer2.Format;
-import com.google.android.exoplayer2.audio.AudioCapabilities;
-import com.google.android.exoplayer2.audio.AudioRendererEventListener;
-import com.google.android.exoplayer2.audio.AudioTrack;
-import com.google.android.exoplayer2.audio.SimpleDecoderAudioRenderer;
-import com.google.android.exoplayer2.util.MimeTypes;
-
 import android.os.Handler;
+import com.google.android.exoplayer2.C;
+import com.google.android.exoplayer2.Format;
+import com.google.android.exoplayer2.audio.AudioProcessor;
+import com.google.android.exoplayer2.audio.AudioRendererEventListener;
+import com.google.android.exoplayer2.audio.SimpleDecoderAudioRenderer;
+import com.google.android.exoplayer2.drm.DrmSessionManager;
+import com.google.android.exoplayer2.drm.ExoMediaCrypto;
+import com.google.android.exoplayer2.util.MimeTypes;
 
 /**
  * Decodes and renders audio using the native Opus decoder.
@@ -32,19 +33,7 @@ public final class LibopusAudioRenderer extends SimpleDecoderAudioRenderer {
   private static final int NUM_BUFFERS = 16;
   private static final int INITIAL_INPUT_BUFFER_SIZE = 960 * 6;
 
-  /**
-   * Returns whether the underlying libopus library is available.
-   */
-  public static boolean isLibopusAvailable() {
-    return OpusDecoder.IS_AVAILABLE;
-  }
-
-  /**
-   * Returns the version of the underlying libopus library if available, otherwise {@code null}.
-   */
-  public static String getLibopusVersion() {
-    return isLibopusAvailable() ? OpusDecoder.getLibopusVersion() : null;
-  }
+  private OpusDecoder decoder;
 
   public LibopusAudioRenderer() {
     this(null, null);
@@ -54,34 +43,52 @@ public final class LibopusAudioRenderer extends SimpleDecoderAudioRenderer {
    * @param eventHandler A handler to use when delivering events to {@code eventListener}. May be
    *     null if delivery of events is not required.
    * @param eventListener A listener of events. May be null if delivery of events is not required.
+   * @param audioProcessors Optional {@link AudioProcessor}s that will process audio before output.
    */
-  public LibopusAudioRenderer(Handler eventHandler, AudioRendererEventListener eventListener) {
-    super(eventHandler, eventListener);
+  public LibopusAudioRenderer(Handler eventHandler, AudioRendererEventListener eventListener,
+      AudioProcessor... audioProcessors) {
+    super(eventHandler, eventListener, audioProcessors);
   }
 
   /**
    * @param eventHandler A handler to use when delivering events to {@code eventListener}. May be
    *     null if delivery of events is not required.
    * @param eventListener A listener of events. May be null if delivery of events is not required.
-   * @param audioCapabilities The audio capabilities for playback on this device. May be null if the
-   *     default capabilities (no encoded audio passthrough support) should be assumed.
-   * @param streamType The type of audio stream for the {@link AudioTrack}.
+   * @param drmSessionManager For use with encrypted media. May be null if support for encrypted
+   *     media is not required.
+   * @param playClearSamplesWithoutKeys Encrypted media may contain clear (un-encrypted) regions.
+   *     For example a media file may start with a short clear region so as to allow playback to
+   *     begin in parallel with key acquisition. This parameter specifies whether the renderer is
+   *     permitted to play clear regions of encrypted media files before {@code drmSessionManager}
+   *     has obtained the keys necessary to decrypt encrypted regions of the media.
+   * @param audioProcessors Optional {@link AudioProcessor}s that will process audio before output.
    */
   public LibopusAudioRenderer(Handler eventHandler, AudioRendererEventListener eventListener,
-      AudioCapabilities audioCapabilities, int streamType) {
-    super(eventHandler, eventListener, audioCapabilities, streamType);
+      DrmSessionManager<ExoMediaCrypto> drmSessionManager, boolean playClearSamplesWithoutKeys,
+      AudioProcessor... audioProcessors) {
+    super(eventHandler, eventListener, null, drmSessionManager, playClearSamplesWithoutKeys,
+        audioProcessors);
   }
 
   @Override
-  public int supportsFormat(Format format) {
-    return isLibopusAvailable() && MimeTypes.AUDIO_OPUS.equalsIgnoreCase(format.sampleMimeType)
+  protected int supportsFormatInternal(Format format) {
+    return OpusLibrary.isAvailable() && MimeTypes.AUDIO_OPUS.equalsIgnoreCase(format.sampleMimeType)
         ? FORMAT_HANDLED : FORMAT_UNSUPPORTED_TYPE;
   }
 
   @Override
-  protected OpusDecoder createDecoder(Format format) throws OpusDecoderException {
-    return new OpusDecoder(NUM_BUFFERS, NUM_BUFFERS, INITIAL_INPUT_BUFFER_SIZE,
-        format.initializationData);
+  protected OpusDecoder createDecoder(Format format, ExoMediaCrypto mediaCrypto)
+      throws OpusDecoderException {
+    decoder = new OpusDecoder(NUM_BUFFERS, NUM_BUFFERS, INITIAL_INPUT_BUFFER_SIZE,
+        format.initializationData, mediaCrypto);
+    return decoder;
+  }
+
+  @Override
+  protected Format getOutputFormat() {
+    return Format.createAudioSampleFormat(null, MimeTypes.AUDIO_RAW, null, Format.NO_VALUE,
+        Format.NO_VALUE, decoder.getChannelCount(), decoder.getSampleRate(), C.ENCODING_PCM_16BIT,
+        null, null, 0, null);
   }
 
 }

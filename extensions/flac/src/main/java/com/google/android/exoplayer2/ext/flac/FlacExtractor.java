@@ -27,7 +27,6 @@ import com.google.android.exoplayer2.extractor.TrackOutput;
 import com.google.android.exoplayer2.util.FlacStreamInfo;
 import com.google.android.exoplayer2.util.MimeTypes;
 import com.google.android.exoplayer2.util.ParsableByteArray;
-
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -58,7 +57,7 @@ public final class FlacExtractor implements Extractor {
   private ExtractorOutput extractorOutput;
   private TrackOutput trackOutput;
 
-  private FlacJni decoder;
+  private FlacDecoderJni decoderJni;
 
   private boolean metadataParsed;
 
@@ -68,11 +67,10 @@ public final class FlacExtractor implements Extractor {
   @Override
   public void init(ExtractorOutput output) {
     extractorOutput = output;
-    trackOutput = extractorOutput.track(0);
+    trackOutput = extractorOutput.track(0, C.TRACK_TYPE_AUDIO);
     extractorOutput.endTracks();
-
     try {
-      decoder = new FlacJni();
+      decoderJni = new FlacDecoderJni();
     } catch (FlacDecoderException e) {
       throw new RuntimeException(e);
     }
@@ -88,24 +86,24 @@ public final class FlacExtractor implements Extractor {
   @Override
   public int read(final ExtractorInput input, PositionHolder seekPosition)
       throws IOException, InterruptedException {
-    decoder.setData(input);
+    decoderJni.setData(input);
 
     if (!metadataParsed) {
       final FlacStreamInfo streamInfo;
       try {
-        streamInfo = decoder.decodeMetadata();
+        streamInfo = decoderJni.decodeMetadata();
         if (streamInfo == null) {
           throw new IOException("Metadata decoding failed");
         }
-      } catch (IOException e){
-        decoder.reset(0);
+      } catch (IOException e) {
+        decoderJni.reset(0);
         input.setRetryPosition(0, e);
         throw e; // never executes
       }
       metadataParsed = true;
 
       extractorOutput.seekMap(new SeekMap() {
-        final boolean isSeekable = decoder.getSeekPosition(0) != -1;
+        final boolean isSeekable = decoderJni.getSeekPosition(0) != -1;
         final long durationUs = streamInfo.durationUs();
 
         @Override
@@ -115,7 +113,7 @@ public final class FlacExtractor implements Extractor {
 
         @Override
         public long getPosition(long timeUs) {
-          return isSeekable ? decoder.getSeekPosition(timeUs) : 0;
+          return isSeekable ? decoderJni.getSeekPosition(timeUs) : 0;
         }
 
         @Override
@@ -135,13 +133,13 @@ public final class FlacExtractor implements Extractor {
     }
 
     outputBuffer.reset();
-    long lastDecodePosition = decoder.getDecodePosition();
+    long lastDecodePosition = decoderJni.getDecodePosition();
     int size;
     try {
-      size = decoder.decodeSample(outputByteBuffer);
-    } catch (IOException e){
+      size = decoderJni.decodeSample(outputByteBuffer);
+    } catch (IOException e) {
       if (lastDecodePosition >= 0) {
-        decoder.reset(lastDecodePosition);
+        decoderJni.reset(lastDecodePosition);
         input.setRetryPosition(lastDecodePosition, e);
       }
       throw e;
@@ -150,25 +148,28 @@ public final class FlacExtractor implements Extractor {
       return RESULT_END_OF_INPUT;
     }
     trackOutput.sampleData(outputBuffer, size);
+    trackOutput.sampleMetadata(decoderJni.getLastSampleTimestamp(), C.BUFFER_FLAG_KEY_FRAME, size,
+        0, null);
 
-    trackOutput.sampleMetadata(decoder.getLastSampleTimestamp(), C.BUFFER_FLAG_KEY_FRAME, size, 0,
-        null);
-
-    return decoder.isEndOfData() ? RESULT_END_OF_INPUT : RESULT_CONTINUE;
+    return decoderJni.isEndOfData() ? RESULT_END_OF_INPUT : RESULT_CONTINUE;
   }
 
   @Override
-  public void seek(long position) {
+  public void seek(long position, long timeUs) {
     if (position == 0) {
       metadataParsed = false;
     }
-    decoder.reset(position);
+    if (decoderJni != null) {
+      decoderJni.reset(position);
+    }
   }
 
   @Override
   public void release() {
-    decoder.release();
-    decoder = null;
+    if (decoderJni != null) {
+      decoderJni.release();
+      decoderJni = null;
+    }
   }
 
 }

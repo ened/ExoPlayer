@@ -16,40 +16,21 @@
 package com.google.android.exoplayer2.ext.opus;
 
 import com.google.android.exoplayer2.C;
+import com.google.android.exoplayer2.decoder.CryptoInfo;
 import com.google.android.exoplayer2.decoder.DecoderInputBuffer;
 import com.google.android.exoplayer2.decoder.SimpleDecoder;
 import com.google.android.exoplayer2.decoder.SimpleOutputBuffer;
-
+import com.google.android.exoplayer2.drm.DecryptionException;
+import com.google.android.exoplayer2.drm.ExoMediaCrypto;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.List;
 
 /**
- * JNI wrapper for the libopus Opus decoder.
+ * Opus decoder.
  */
 /* package */ final class OpusDecoder extends
     SimpleDecoder<DecoderInputBuffer, SimpleOutputBuffer, OpusDecoderException> {
-
-  /**
-   * Whether the underlying libopus library is available.
-   */
-  public static final boolean IS_AVAILABLE;
-  static {
-    boolean isAvailable;
-    try {
-      System.loadLibrary("opus");
-      System.loadLibrary("opusJNI");
-      isAvailable = true;
-    } catch (UnsatisfiedLinkError exception) {
-      isAvailable = false;
-    }
-    IS_AVAILABLE = isAvailable;
-  }
-
-  /**
-   * Returns the version string of the underlying libopus decoder.
-   */
-  public static native String getLibopusVersion();
 
   private static final int DEFAULT_SEEK_PRE_ROLL_SAMPLES = 3840;
 
@@ -57,6 +38,12 @@ import java.util.List;
    * Opus streams are always decoded at 48000 Hz.
    */
   private static final int SAMPLE_RATE = 48000;
+
+  private static final int NO_ERROR = 0;
+  private static final int DECODE_ERROR = -1;
+  private static final int DRM_ERROR = -2;
+
+  private final ExoMediaCrypto exoMediaCrypto;
 
   private final int channelCount;
   private final int headerSkipSamples;
@@ -74,11 +61,20 @@ import java.util.List;
    * @param initializationData Codec-specific initialization data. The first element must contain an
    *     opus header. Optionally, the list may contain two additional buffers, which must contain
    *     the encoder delay and seek pre roll values in nanoseconds, encoded as longs.
+   * @param exoMediaCrypto The {@link ExoMediaCrypto} object required for decoding encrypted
+   *     content. Maybe null and can be ignored if decoder does not handle encrypted content.
    * @throws OpusDecoderException Thrown if an exception occurs when initializing the decoder.
    */
   public OpusDecoder(int numInputBuffers, int numOutputBuffers, int initialInputBufferSize,
-      List<byte[]> initializationData) throws OpusDecoderException {
+      List<byte[]> initializationData, ExoMediaCrypto exoMediaCrypto) throws OpusDecoderException {
     super(new DecoderInputBuffer[numInputBuffers], new SimpleOutputBuffer[numOutputBuffers]);
+    if (!OpusLibrary.isAvailable()) {
+      throw new OpusDecoderException("Failed to load decoder native libraries.");
+    }
+    this.exoMediaCrypto = exoMediaCrypto;
+    if (exoMediaCrypto != null && !OpusLibrary.opusIsSecureDecodeSupported()) {
+      throw new OpusDecoderException("Opus decoder does not support secure decode.");
+    }
     byte[] headerBytes = initializationData.get(0);
     if (headerBytes.length < 19) {
       throw new OpusDecoderException("Header size is too small.");
@@ -91,7 +87,8 @@ import java.util.List;
     int gain = readLittleEndian16(headerBytes, 16);
 
     byte[] streamMap = new byte[8];
-    int numStreams, numCoupled;
+    int numStreams;
+    int numCoupled;
     if (headerBytes[18] == 0) { // Channel mapping
       // If there is no channel mapping, use the defaults.
       if (channelCount > 2) { // Maximum channel count with default layout.
@@ -134,7 +131,7 @@ import java.util.List;
 
   @Override
   public String getName() {
-    return "libopus" + getLibopusVersion();
+    return "libopus" + OpusLibrary.getVersion();
   }
 
   @Override
@@ -157,16 +154,26 @@ import java.util.List;
       skipSamples = (inputBuffer.timeUs == 0) ? headerSkipSamples : headerSeekPreRollSamples;
     }
     ByteBuffer inputData = inputBuffer.data;
-    int inputSize = inputData.limit();
-    int outputSize = opusGetRequiredOutputBufferSize(inputData, inputSize, SAMPLE_RATE);
-    if (outputSize < 0) {
-      return new OpusDecoderException("Error when computing required output buffer size.");
-    }
-    ByteBuffer outputData = outputBuffer.init(inputBuffer.timeUs, outputSize);
-    int result = opusDecode(nativeDecoderContext, inputData, inputSize, outputData, outputSize);
+    CryptoInfo cryptoInfo = inputBuffer.cryptoInfo;
+    int result = inputBuffer.isEncrypted()
+        ? opusSecureDecode(nativeDecoderContext, inputBuffer.timeUs, inputData, inputData.limit(),
+            outputBuffer, SAMPLE_RATE, exoMediaCrypto, cryptoInfo.mode,
+            cryptoInfo.key, cryptoInfo.iv, cryptoInfo.numSubSamples,
+            cryptoInfo.numBytesOfClearData, cryptoInfo.numBytesOfEncryptedData)
+        : opusDecode(nativeDecoderContext, inputBuffer.timeUs, inputData, inputData.limit(),
+            outputBuffer);
     if (result < 0) {
-      return new OpusDecoderException("Decode error: " + opusGetErrorMessage(result));
+      if (result == DRM_ERROR) {
+        String message = "Drm error: " + opusGetErrorMessage(nativeDecoderContext);
+        DecryptionException cause = new DecryptionException(
+            opusGetErrorCode(nativeDecoderContext), message);
+        return new OpusDecoderException(message, cause);
+      } else {
+        return new OpusDecoderException("Decode error: " + opusGetErrorMessage(result));
+      }
     }
+
+    ByteBuffer outputData = outputBuffer.data;
     outputData.position(0);
     outputData.limit(result);
     if (skipSamples > 0) {
@@ -190,15 +197,19 @@ import java.util.List;
     opusClose(nativeDecoderContext);
   }
 
-  private native long opusInit(int sampleRate, int channelCount, int numStreams, int numCoupled,
-      int gain, byte[] streamMap);
-  private native int opusDecode(long decoder, ByteBuffer inputBuffer, int inputSize,
-      ByteBuffer outputBuffer, int outputSize);
-  private native int opusGetRequiredOutputBufferSize(
-      ByteBuffer inputBuffer, int inputSize, int sampleRate);
-  private native void opusClose(long decoder);
-  private native void opusReset(long decoder);
-  private native String opusGetErrorMessage(int errorCode);
+  /**
+   * Returns the channel count of output audio.
+   */
+  public int getChannelCount() {
+    return channelCount;
+  }
+
+  /**
+   * Returns the sample rate of output audio.
+   */
+  public int getSampleRate() {
+    return SAMPLE_RATE;
+  }
 
   private static int nsToSamples(long ns) {
     return (int) (ns * SAMPLE_RATE / 1000000000);
@@ -209,5 +220,18 @@ import java.util.List;
     value |= (input[offset + 1] & 0xFF) << 8;
     return value;
   }
+
+  private native long opusInit(int sampleRate, int channelCount, int numStreams, int numCoupled,
+      int gain, byte[] streamMap);
+  private native int opusDecode(long decoder, long timeUs, ByteBuffer inputBuffer, int inputSize,
+      SimpleOutputBuffer outputBuffer);
+  private native int opusSecureDecode(long decoder, long timeUs, ByteBuffer inputBuffer,
+      int inputSize, SimpleOutputBuffer outputBuffer, int sampleRate,
+      ExoMediaCrypto mediaCrypto, int inputMode, byte[] key, byte[] iv,
+      int numSubSamples, int[] numBytesOfClearData, int[] numBytesOfEncryptedData);
+  private native void opusClose(long decoder);
+  private native void opusReset(long decoder);
+  private native int opusGetErrorCode(long decoder);
+  private native String opusGetErrorMessage(long decoder);
 
 }

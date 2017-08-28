@@ -15,14 +15,12 @@
  */
 package com.google.android.exoplayer2.testutil;
 
+import android.util.SparseBooleanArray;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.extractor.ExtractorInput;
-
-import android.util.SparseBooleanArray;
-import junit.framework.Assert;
-
 import java.io.EOFException;
 import java.io.IOException;
+import junit.framework.Assert;
 
 /**
  * A fake {@link ExtractorInput} capable of simulating various scenarios.
@@ -42,7 +40,7 @@ import java.io.IOException;
  * bytes then it will be fully satisfied, since it has the same target position of 10.
  * <p>
  * Unknown data length can be simulated using {@link Builder#setSimulateUnknownLength}. When enabled
- * {@link #getLength()} will return {@link C#LENGTH_UNBOUNDED} rather than the length of the data.
+ * {@link #getLength()} will return {@link C#LENGTH_UNSET} rather than the length of the data.
  */
 public final class FakeExtractorInput implements ExtractorInput {
 
@@ -86,7 +84,7 @@ public final class FakeExtractorInput implements ExtractorInput {
    * @param position The position to set.
    */
   public void setPosition(int position) {
-    Assert.assertTrue(0 <= position && position < data.length);
+    Assert.assertTrue(0 <= position && position <= data.length);
     readPosition = position;
     peekPosition = position;
   }
@@ -188,7 +186,7 @@ public final class FakeExtractorInput implements ExtractorInput {
 
   @Override
   public long getLength() {
-    return simulateUnknownLength ? C.LENGTH_UNBOUNDED : data.length;
+    return simulateUnknownLength ? C.LENGTH_UNSET : data.length;
   }
 
   @Override
@@ -205,7 +203,7 @@ public final class FakeExtractorInput implements ExtractorInput {
       peekPosition = readPosition;
       throw new SimulatedIOException("Simulated IO error at position: " + position);
     }
-    if (isEof()) {
+    if (length > 0 && position == data.length) {
       if (allowEndOfInput) {
         return false;
       }
@@ -219,6 +217,10 @@ public final class FakeExtractorInput implements ExtractorInput {
   }
 
   private int getReadLength(int requestedLength) {
+    if (readPosition == data.length) {
+      // If the requested length is non-zero, the end of the input will be read.
+      return requestedLength == 0 ? 0 : Integer.MAX_VALUE;
+    }
     int targetPosition = readPosition + requestedLength;
     if (simulatePartialReads && requestedLength > 1
         && !partiallySatisfiedTargetPositions.get(targetPosition)) {
@@ -226,10 +228,6 @@ public final class FakeExtractorInput implements ExtractorInput {
       return 1;
     }
     return Math.min(requestedLength, data.length - readPosition);
-  }
-
-  private boolean isEof() {
-    return readPosition == data.length;
   }
 
   /**

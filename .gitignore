@@ -56,5 +56,11 @@ extensions/flac/src/main/jni/flac
 # FFmpeg extension
 extensions/ffmpeg/src/main/jni/ffmpeg
 
+# Cronet extension
+extensions/cronet/jniLibs/*
+!extensions/cronet/jniLibs/README.md
+extensions/cronet/libs/*
+!extensions/cronet/libs/README.md
+
 # live555 extension
 extensions/live555/src/main/jni/live

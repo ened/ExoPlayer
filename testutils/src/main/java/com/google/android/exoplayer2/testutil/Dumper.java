@@ -16,7 +16,6 @@
 package com.google.android.exoplayer2.testutil;
 
 import com.google.android.exoplayer2.C;
-
 import java.util.Arrays;
 import java.util.Locale;
 
@@ -61,7 +60,7 @@ public final class Dumper {
   }
 
   public Dumper addTime(String field, long time) {
-    return add(field, time == C.UNSET_TIME_US ? "UNSET TIME" : time);
+    return add(field, time == C.TIME_UNSET ? "UNSET TIME" : time);
   }
 
   public Dumper startBlock(String name) {
