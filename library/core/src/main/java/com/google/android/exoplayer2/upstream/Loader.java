@@ -20,6 +20,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.os.SystemClock;
+import android.support.annotation.Nullable;
 import android.util.Log;
 import com.google.android.exoplayer2.util.Assertions;
 import com.google.android.exoplayer2.util.TraceUtil;
@@ -61,8 +62,8 @@ public final class Loader implements LoaderErrorThrower {
     /**
      * Performs the load, returning on completion or cancellation.
      *
-     * @throws IOException
-     * @throws InterruptedException
+     * @throws IOException If the input could not be loaded.
+     * @throws InterruptedException If the thread was interrupted.
      */
     void load() throws IOException, InterruptedException;
 
@@ -197,25 +198,17 @@ public final class Loader implements LoaderErrorThrower {
    * Releases the {@link Loader}. This method should be called when the {@link Loader} is no longer
    * required.
    *
-   * @param callback A callback to be called when the release ends. Will be called synchronously
-   *     from this method if no load is in progress, or asynchronously once the load has been
-   *     canceled otherwise. May be null.
-   * @return True if {@code callback} was called synchronously. False if it will be called
-   *     asynchronously or if {@code callback} is null.
+   * @param callback An optional callback to be called on the loading thread once the loader has
+   *     been released.
    */
-  public boolean release(ReleaseCallback callback) {
-    boolean callbackInvoked = false;
+  public void release(@Nullable ReleaseCallback callback) {
     if (currentTask != null) {
       currentTask.cancel(true);
-      if (callback != null) {
-        downloadExecutorService.execute(new ReleaseTask(callback));
-      }
-    } else if (callback != null) {
-      callback.onLoaderReleased();
-      callbackInvoked = true;
+    }
+    if (callback != null) {
+      downloadExecutorService.execute(new ReleaseTask(callback));
     }
     downloadExecutorService.shutdown();
-    return callbackInvoked;
   }
 
   // LoaderErrorThrower implementation.
@@ -380,7 +373,13 @@ public final class Loader implements LoaderErrorThrower {
           callback.onLoadCanceled(loadable, nowMs, durationMs, false);
           break;
         case MSG_END_OF_SOURCE:
-          callback.onLoadCompleted(loadable, nowMs, durationMs);
+          try {
+            callback.onLoadCompleted(loadable, nowMs, durationMs);
+          } catch (RuntimeException e) {
+            // This should never happen, but handle it anyway.
+            Log.e(TAG, "Unexpected exception handling load completed", e);
+            fatalError = new UnexpectedLoaderException(e);
+          }
           break;
         case MSG_IO_EXCEPTION:
           currentError = (IOException) msg.obj;
@@ -391,6 +390,9 @@ public final class Loader implements LoaderErrorThrower {
             errorCount = retryAction == RETRY_RESET_ERROR_COUNT ? 1 : errorCount + 1;
             start(getRetryDelayMillis());
           }
+          break;
+        default:
+          // Never happens.
           break;
       }
     }
@@ -410,7 +412,7 @@ public final class Loader implements LoaderErrorThrower {
 
   }
 
-  private static final class ReleaseTask extends Handler implements Runnable {
+  private static final class ReleaseTask implements Runnable {
 
     private final ReleaseCallback callback;
 
@@ -420,11 +422,6 @@ public final class Loader implements LoaderErrorThrower {
 
     @Override
     public void run() {
-      sendEmptyMessage(0);
-    }
-
-    @Override
-    public void handleMessage(Message msg) {
       callback.onLoaderReleased();
     }
 

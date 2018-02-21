@@ -32,7 +32,6 @@ import android.widget.ExpandableListView;
 import android.widget.ExpandableListView.OnChildClickListener;
 import android.widget.TextView;
 import android.widget.Toast;
-import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.ParserException;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DataSourceInputStream;
@@ -90,7 +89,7 @@ public class SampleChooserActivity extends Activity {
       Toast.makeText(getApplicationContext(), R.string.sample_list_load_error, Toast.LENGTH_LONG)
           .show();
     }
-    ExpandableListView sampleList = (ExpandableListView) findViewById(R.id.sample_list);
+    ExpandableListView sampleList = findViewById(R.id.sample_list);
     sampleList.setAdapter(new SampleAdapter(this, groups));
     sampleList.setOnChildClickListener(new OnChildClickListener() {
       @Override
@@ -182,6 +181,7 @@ public class SampleChooserActivity extends Activity {
       UUID drmUuid = null;
       String drmLicenseUrl = null;
       String[] drmKeyRequestProperties = null;
+      boolean drmMultiSession = false;
       boolean preferExtensionDecoders = false;
       ArrayList<UriSample> playlistSamples = null;
       String adTagUri = null;
@@ -201,7 +201,9 @@ public class SampleChooserActivity extends Activity {
             break;
           case "drm_scheme":
             Assertions.checkState(!insidePlaylist, "Invalid attribute on nested item: drm_scheme");
-            drmUuid = getDrmUuid(reader.nextString());
+            String drmScheme = reader.nextString();
+            drmUuid = Util.getDrmUuid(drmScheme);
+            Assertions.checkState(drmUuid != null, "Invalid drm_scheme: " + drmScheme);
             break;
           case "drm_license_url":
             Assertions.checkState(!insidePlaylist,
@@ -219,6 +221,9 @@ public class SampleChooserActivity extends Activity {
             }
             reader.endObject();
             drmKeyRequestProperties = drmKeyRequestPropertiesList.toArray(new String[0]);
+            break;
+          case "drm_multi_session":
+            drmMultiSession = reader.nextBoolean();
             break;
           case "prefer_extension_decoders":
             Assertions.checkState(!insidePlaylist,
@@ -242,15 +247,16 @@ public class SampleChooserActivity extends Activity {
         }
       }
       reader.endObject();
-
+      DrmInfo drmInfo = drmUuid == null ? null : new DrmInfo(drmUuid, drmLicenseUrl,
+          drmKeyRequestProperties, drmMultiSession);
       if (playlistSamples != null) {
         UriSample[] playlistSamplesArray = playlistSamples.toArray(
             new UriSample[playlistSamples.size()]);
-        return new PlaylistSample(sampleName, drmUuid, drmLicenseUrl, drmKeyRequestProperties,
-            preferExtensionDecoders, playlistSamplesArray);
+        return new PlaylistSample(sampleName, preferExtensionDecoders, drmInfo,
+            playlistSamplesArray);
       } else {
-        return new UriSample(sampleName, drmUuid, drmLicenseUrl, drmKeyRequestProperties,
-            preferExtensionDecoders, uri, extension, adTagUri);
+        return new UriSample(sampleName, preferExtensionDecoders, drmInfo, uri, extension,
+            adTagUri);
       }
     }
 
@@ -263,23 +269,6 @@ public class SampleChooserActivity extends Activity {
       SampleGroup group = new SampleGroup(groupName);
       groups.add(group);
       return group;
-    }
-
-    private UUID getDrmUuid(String typeString) throws ParserException {
-      switch (Util.toLowerInvariant(typeString)) {
-        case "widevine":
-          return C.WIDEVINE_UUID;
-        case "playready":
-          return C.PLAYREADY_UUID;
-        case "clearkey":
-          return C.CLEARKEY_UUID;
-        default:
-          try {
-            return UUID.fromString(typeString);
-          } catch (RuntimeException e) {
-            throw new ParserException("Unsupported drm type: " + typeString);
-          }
-      }
     }
 
   }
@@ -372,31 +361,47 @@ public class SampleChooserActivity extends Activity {
 
   }
 
-  private abstract static class Sample {
-
-    public final String name;
-    public final boolean preferExtensionDecoders;
+  private static final class DrmInfo {
     public final UUID drmSchemeUuid;
     public final String drmLicenseUrl;
     public final String[] drmKeyRequestProperties;
+    public final boolean drmMultiSession;
 
-    public Sample(String name, UUID drmSchemeUuid, String drmLicenseUrl,
-        String[] drmKeyRequestProperties, boolean preferExtensionDecoders) {
-      this.name = name;
+    public DrmInfo(UUID drmSchemeUuid, String drmLicenseUrl,
+        String[] drmKeyRequestProperties, boolean drmMultiSession) {
       this.drmSchemeUuid = drmSchemeUuid;
       this.drmLicenseUrl = drmLicenseUrl;
       this.drmKeyRequestProperties = drmKeyRequestProperties;
+      this.drmMultiSession = drmMultiSession;
+    }
+
+    public void updateIntent(Intent intent) {
+      Assertions.checkNotNull(intent);
+      intent.putExtra(PlayerActivity.DRM_SCHEME_EXTRA, drmSchemeUuid.toString());
+      intent.putExtra(PlayerActivity.DRM_LICENSE_URL, drmLicenseUrl);
+      intent.putExtra(PlayerActivity.DRM_KEY_REQUEST_PROPERTIES, drmKeyRequestProperties);
+      intent.putExtra(PlayerActivity.DRM_MULTI_SESSION, drmMultiSession);
+    }
+  }
+
+  private abstract static class Sample {
+    public final String name;
+    public final boolean preferExtensionDecoders;
+    public final DrmInfo drmInfo;
+
+    public Sample(String name, boolean preferExtensionDecoders, DrmInfo drmInfo) {
+      this.name = name;
       this.preferExtensionDecoders = preferExtensionDecoders;
+      this.drmInfo = drmInfo;
     }
 
     public Intent buildIntent(Context context) {
       Intent intent = new Intent(context, PlayerActivity.class);
       intent.putExtra(PlayerActivity.PREFER_EXTENSION_DECODERS, preferExtensionDecoders);
-      if (drmSchemeUuid != null) {
-        intent.putExtra(PlayerActivity.DRM_SCHEME_UUID_EXTRA, drmSchemeUuid.toString());
-        intent.putExtra(PlayerActivity.DRM_LICENSE_URL, drmLicenseUrl);
-        intent.putExtra(PlayerActivity.DRM_KEY_REQUEST_PROPERTIES, drmKeyRequestProperties);
+      if (drmInfo != null) {
+        drmInfo.updateIntent(intent);
       }
+
       return intent;
     }
 
@@ -408,10 +413,9 @@ public class SampleChooserActivity extends Activity {
     public final String extension;
     public final String adTagUri;
 
-    public UriSample(String name, UUID drmSchemeUuid, String drmLicenseUrl,
-        String[] drmKeyRequestProperties, boolean preferExtensionDecoders, String uri,
+    public UriSample(String name, boolean preferExtensionDecoders, DrmInfo drmInfo, String uri,
         String extension, String adTagUri) {
-      super(name, drmSchemeUuid, drmLicenseUrl, drmKeyRequestProperties, preferExtensionDecoders);
+      super(name, preferExtensionDecoders, drmInfo);
       this.uri = uri;
       this.extension = extension;
       this.adTagUri = adTagUri;
@@ -432,10 +436,9 @@ public class SampleChooserActivity extends Activity {
 
     public final UriSample[] children;
 
-    public PlaylistSample(String name, UUID drmSchemeUuid, String drmLicenseUrl,
-        String[] drmKeyRequestProperties, boolean preferExtensionDecoders,
+    public PlaylistSample(String name, boolean preferExtensionDecoders, DrmInfo drmInfo,
         UriSample... children) {
-      super(name, drmSchemeUuid, drmLicenseUrl, drmKeyRequestProperties, preferExtensionDecoders);
+      super(name, preferExtensionDecoders, drmInfo);
       this.children = children;
     }
 

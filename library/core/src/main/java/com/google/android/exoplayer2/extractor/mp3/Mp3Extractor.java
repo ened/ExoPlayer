@@ -38,7 +38,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
 /**
- * Extracts data from an MP3 file.
+ * Extracts data from the MP3 container format.
  */
 public final class Mp3Extractor implements Extractor {
 
@@ -112,16 +112,11 @@ public final class Mp3Extractor implements Extractor {
   private long samplesRead;
   private int sampleBytesRemaining;
 
-  /**
-   * Constructs a new {@link Mp3Extractor}.
-   */
   public Mp3Extractor() {
     this(0);
   }
 
   /**
-   * Constructs a new {@link Mp3Extractor}.
-   *
    * @param flags Flags that control the extractor's behavior.
    */
   public Mp3Extractor(@Flags int flags) {
@@ -129,8 +124,6 @@ public final class Mp3Extractor implements Extractor {
   }
 
   /**
-   * Constructs a new {@link Mp3Extractor}.
-   *
    * @param flags Flags that control the extractor's behavior.
    * @param forcedFirstSampleTimestampUs A timestamp to force for the first sample, or
    *     {@link C#TIME_UNSET} if forcing is not required.
@@ -143,6 +136,8 @@ public final class Mp3Extractor implements Extractor {
     gaplessInfoHolder = new GaplessInfoHolder();
     basisTimeUs = C.TIME_UNSET;
   }
+
+  // Extractor implementation.
 
   @Override
   public boolean sniff(ExtractorInput input) throws IOException, InterruptedException {
@@ -194,6 +189,8 @@ public final class Mp3Extractor implements Extractor {
     }
     return readSample(input);
   }
+
+  // Internal methods.
 
   private int readSample(ExtractorInput extractorInput) throws IOException, InterruptedException {
     if (sampleBytesRemaining == 0) {
@@ -363,7 +360,7 @@ public final class Mp3Extractor implements Extractor {
     int seekHeader = getSeekFrameHeader(frame, xingBase);
     Seeker seeker;
     if (seekHeader == SEEK_HEADER_XING || seekHeader == SEEK_HEADER_INFO) {
-      seeker = XingSeeker.create(synchronizedHeader, frame, input.getPosition(), input.getLength());
+      seeker = XingSeeker.create(input.getLength(), input.getPosition(), synchronizedHeader, frame);
       if (seeker != null && !gaplessInfoHolder.hasGaplessInfo()) {
         // If there is a Xing header, read gapless playback metadata at a fixed offset.
         input.resetPeekPosition();
@@ -378,7 +375,7 @@ public final class Mp3Extractor implements Extractor {
         return getConstantBitrateSeeker(input);
       }
     } else if (seekHeader == SEEK_HEADER_VBRI) {
-      seeker = VbriSeeker.create(synchronizedHeader, frame, input.getPosition(), input.getLength());
+      seeker = VbriSeeker.create(input.getLength(), input.getPosition(), synchronizedHeader, frame);
       input.skipFully(synchronizedHeader.frameSize);
     } else { // seekerHeader == SEEK_HEADER_UNSET
       // This frame doesn't contain seeking information, so reset the peek position.
@@ -396,8 +393,7 @@ public final class Mp3Extractor implements Extractor {
     input.peekFully(scratch.data, 0, 4);
     scratch.setPosition(0);
     MpegAudioHeader.populateHeader(scratch.readInt(), synchronizedHeader);
-    return new ConstantBitrateSeeker(input.getPosition(), synchronizedHeader.bitrate,
-        input.getLength());
+    return new ConstantBitrateSeeker(input.getLength(), input.getPosition(), synchronizedHeader);
   }
 
   /**
