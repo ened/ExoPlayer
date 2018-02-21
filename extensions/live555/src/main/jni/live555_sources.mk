@@ -178,6 +178,7 @@ LIVE555_SOURCES = \
     live/liveMedia/RTSPCommon.cpp                                \
     live/liveMedia/RTSPRegisterSender.cpp                        \
     live/liveMedia/RTSPServer.cpp                                \
+    live/liveMedia/RTSPServerRegister.cpp                        \
     live/liveMedia/RTSPServerSupportingHTTPStreaming.cpp          \
     live/liveMedia/SIPClient.cpp                                  \
     live/liveMedia/ServerMediaSession.cpp                        \
