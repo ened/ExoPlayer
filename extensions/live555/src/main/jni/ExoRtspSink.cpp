@@ -9,6 +9,8 @@
 
 // Implementation of "ExoRtspSink":
 
+#define DEBUG_PRINT_EACH_RECEIVED_FRAME 1
+
 // Even though we're not going to be doing anything with the incoming data, we still need to receive it.
 // Define the size of the buffer that we'll use:
 #define DUMMY_SINK_RECEIVE_BUFFER_SIZE 100000
@@ -87,13 +89,14 @@ void ExoRtspSink::afterGettingFrame(unsigned frameSize, unsigned numTruncatedByt
     SPropRecord *pPropRecord = parseSPropParameterSets(fSubsession.fmtp_spropparametersets(),
                                                        records);
 
+    envir() << "records: " << records << "\n";
+
     if (records == 2) {
         delete[] sPropRecord;
 
         // TODO: Check.
-//        envir() << "records: " << records << "\n";
 
-        envir() << "1: " << pPropRecord[0].sPropBytes << ", 2: " << pPropRecord[1].sPropBytes << "\n";
+        // envir() << "1: " << pPropRecord[0].sPropBytes << ", 2: " << pPropRecord[1].sPropBytes << "\n";
 
         sPropRecord = pPropRecord;
     } else {

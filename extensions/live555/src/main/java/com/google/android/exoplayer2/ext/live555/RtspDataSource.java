@@ -52,6 +52,8 @@ public class RtspDataSource implements DataSource {
     @Override
     public void close() throws IOException {
         Log.d(TAG, "close() called");
+
+        live555Jni.stop();
     }
 
     private ParsableByteArray frameWithSps;

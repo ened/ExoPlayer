@@ -47,6 +47,7 @@ import java.lang.reflect.Constructor;
  * <li>WAV ({@link WavExtractor})</li>
  * <li>AC3 ({@link Ac3Extractor})</li>
  * <li>FLAC (only available if the FLAC extension is built and included)</li>
+ * <li>RTSP (only available if the RTSP extension is built and included)</li>
  * </ul>
  */
 public final class DefaultExtractorsFactory implements ExtractorsFactory {
@@ -68,6 +69,25 @@ public final class DefaultExtractorsFactory implements ExtractorsFactory {
       throw new RuntimeException("Error instantiating FLAC extension", e);
     }
     FLAC_EXTRACTOR_CONSTRUCTOR = flacExtractorConstructor;
+  }
+
+  private static final Constructor<? extends Extractor> RTSP_EXTRACTOR_CONSTRUCTOR;
+  static {
+    Constructor<? extends Extractor> rtspExtractorConstructor = null;
+    try {
+      // LINT.IfChange
+      rtspExtractorConstructor =
+          Class.forName("com.google.android.exoplayer2.ext.live555.RtspExtractor")
+              .asSubclass(Extractor.class)
+              .getConstructor();
+      // LINT.ThenChange(../../../../../../../../proguard-rules.txt)
+    } catch (ClassNotFoundException e) {
+      // Expected if the app was built without the RTSP extension.
+    } catch (Exception e) {
+      // The RTSP extension is present, but instantiation failed.
+      throw new RuntimeException("Error instantiating RTSP extension", e);
+    }
+    RTSP_EXTRACTOR_CONSTRUCTOR = rtspExtractorConstructor;
   }
 
   private @MatroskaExtractor.Flags int matroskaFlags;
@@ -159,7 +179,12 @@ public final class DefaultExtractorsFactory implements ExtractorsFactory {
 
   @Override
   public synchronized Extractor[] createExtractors() {
-    Extractor[] extractors = new Extractor[FLAC_EXTRACTOR_CONSTRUCTOR == null ? 11 : 12];
+    int numExtractors = 11;
+    Extractor[] extractors = new Extractor[
+            numExtractors +
+            (FLAC_EXTRACTOR_CONSTRUCTOR == null ? 1 : 0) +
+            (RTSP_EXTRACTOR_CONSTRUCTOR == null ? 1 : 0)
+    ];
     extractors[0] = new MatroskaExtractor(matroskaFlags);
     extractors[1] = new FragmentedMp4Extractor(fragmentedMp4Flags);
     extractors[2] = new Mp4Extractor(mp4Flags);
@@ -177,6 +202,14 @@ public final class DefaultExtractorsFactory implements ExtractorsFactory {
       } catch (Exception e) {
         // Should never happen.
         throw new IllegalStateException("Unexpected error creating FLAC extractor", e);
+      }
+    }
+    if (RTSP_EXTRACTOR_CONSTRUCTOR != null) {
+      try {
+        extractors[(FLAC_EXTRACTOR_CONSTRUCTOR == null ? 11 : 12)] = RTSP_EXTRACTOR_CONSTRUCTOR.newInstance();
+      } catch (Exception e) {
+        // Should never happen.
+        throw new IllegalStateException("Unexpected error creating RTSP extractor", e);
       }
     }
     return extractors;
